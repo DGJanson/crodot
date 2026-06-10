@@ -23,7 +23,7 @@ use crate::tui::llmresponse::{
 };
 use crate::tui::llmscreen::{create_llm_screen_state, draw_llm_screen, handle_event_llm_screen};
 use crate::tui::menu::{create_menu_state, draw_menu, handle_event_menu};
-use crate::tui::title::{draw_title, handle_event_title};
+use crate::tui::title::{create_title_state, draw_title, handle_event_title};
 
 pub fn start_tui(app_state: AppState) -> Result<(), Box<dyn Error>> {
     // Setup terminal and stuff
@@ -59,6 +59,7 @@ where
     let mut last_tick = Instant::now();
 
     // Init state for the different screens
+    let mut title_state = create_title_state();
     let mut menu_state = create_menu_state();
     let mut llm_state = create_llm_screen_state();
     let mut llm_response_state = create_llm_response_state();
@@ -77,7 +78,7 @@ where
                 draw_too_small_screen(frame);
             } else {
                 match app_state.screen {
-                    Screen::Title => draw_title(frame, &mut app_state),
+                    Screen::Title => draw_title(frame, &mut app_state, &mut title_state),
                     Screen::Menu => draw_menu(frame, &mut app_state, &mut menu_state),
                     Screen::Llm => draw_llm_screen(frame, &mut app_state, &mut llm_state),
                     Screen::LlmResponse => {
@@ -108,7 +109,7 @@ where
                 }
                 // Pass key event to screen module
                 match app_state.screen {
-                    Screen::Title => handle_event_title(key, &mut app_state),
+                    Screen::Title => handle_event_title(key, &mut app_state, &mut title_state),
                     Screen::Menu => handle_event_menu(key, &mut app_state, &mut menu_state),
                     Screen::Llm => handle_event_llm_screen(key, &mut app_state, &mut llm_state),
                     Screen::LlmResponse => handle_event_llm_response_screen(

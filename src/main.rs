@@ -1,5 +1,6 @@
 mod crllm; // crodot llm crate
 mod fileutils;
+mod project;
 mod tui;
 
 mod clitests;
@@ -9,6 +10,8 @@ use std::sync::{
     Arc,
     mpsc::{Receiver, Sender, channel},
 };
+
+use project::Project;
 
 enum Screen {
     Title,
@@ -52,11 +55,16 @@ impl fmt::Display for LlmResponseState {
 }
 
 struct AppState {
-    llm_provider: Arc<dyn llm::LLMProvider>,
+    // UI stuff
     screen: Screen,
     exit: bool,
 
+    // Project stuff
+    available_projects: Option<Vec<String>>,
+    current_project: Option<Project>,
+
     // LLM related stuff
+    llm_provider: Arc<dyn llm::LLMProvider>,
     current_prompt: String,
     current_prompt_mode: LlmMode,
     llm_response_state: LlmResponseState,
@@ -78,16 +86,21 @@ fn read_command_line_args() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     Ok(args)
 }
 
-fn generate_app_state(llm_provider: Arc<dyn llm::LLMProvider>) -> AppState {
+fn generate_app_state(
+    llm_provider: Arc<dyn llm::LLMProvider>,
+    projects: Option<Vec<String>>,
+) -> AppState {
     // Create the channels for async
     let (tx, rx) = channel::<String>();
 
     // simply create the app state using the llm_provider
     // use defaults and the above channels for the rest
     AppState {
-        llm_provider,
         screen: Screen::Title,
         exit: false,
+        available_projects: projects,
+        current_project: None,
+        llm_provider,
         current_prompt: String::default(),
         current_prompt_mode: LlmMode::Question,
         llm_response_state: LlmResponseState::Idle,
@@ -109,16 +122,29 @@ fn main() {
     let args_opt = read_command_line_args();
     if let Ok(args) = args_opt {
         // Get llm options
-        let config_opt = crllm::llm_config::generate_llm_provider(&args[1]);
-        match config_opt {
-            Ok(config) => {
+        let crodot_config_opt = crllm::llm_config::read_llm_config_file(&args[1]);
+        match crodot_config_opt {
+            Ok(crodot_config) => {
+                // Let us get the projects out first:
+                let projects = crodot_config.projects.clone();
+
+                // First we need to generate the llm_provider
+                let llm_provider = match crllm::llm_config::generate_llm_provider(crodot_config) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        log::error!("Could not generate LLM provider. Please check config.");
+                        log::error!("{error}");
+                        return;
+                    }
+                };
+
                 // Two options now, we look for possible additional arguments
                 // If no additional arguments, we simply boot the interface,
                 // otherwise we try to handle the arguments
                 if args.len() == 2 {
                     // default state, boot the app as intended
                     log::info!("Read config, booting interface");
-                    let app_state = generate_app_state(config);
+                    let app_state = generate_app_state(llm_provider, projects);
                     let tui_exit = tui::tuimain::start_tui(app_state);
                     match tui_exit {
                         Ok(_) => log::info!("Exited normally"),
@@ -135,7 +161,7 @@ fn main() {
                             // In this case we just want to test the llm
                             // We do not create an interface
                             log::info!("Read config, testing LLM call");
-                            clitests::test_llm_call_sync(config);
+                            clitests::test_llm_call_sync(llm_provider);
                         }
                         _ => {
                             log::error!("Unknown cli arg. Exiting");

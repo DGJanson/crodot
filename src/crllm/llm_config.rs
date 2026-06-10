@@ -10,7 +10,7 @@ use llm::{
 };
 
 #[derive(Deserialize)]
-struct LlmConfig {
+pub struct CrodotConfig {
     provider: LlmProvider,
     model: String,
     env_var_key: String,
@@ -18,6 +18,7 @@ struct LlmConfig {
     system_prompt_file: String, // Location of the system prompt
     api_version: Option<String>,
     deployment_id: Option<String>,
+    pub projects: Option<Vec<String>>, // possible list of projects
 }
 
 #[derive(Deserialize)]
@@ -26,25 +27,22 @@ enum LlmProvider {
     AzureOpenAi,
 }
 
-fn read_llm_config_file(location: &str) -> Result<LlmConfig, Box<dyn error::Error>> {
+pub fn read_llm_config_file(location: &str) -> Result<CrodotConfig, Box<dyn error::Error>> {
     let file_contents = std::fs::read_to_string(location)?;
     let llm_config = read_llm_config_string(&file_contents)?;
     Ok(llm_config)
 }
 
-fn read_llm_config_string(file_contents: &str) -> Result<LlmConfig, Box<dyn error::Error>> {
-    let llm_config: LlmConfig = serde_json::from_str(file_contents)?;
+fn read_llm_config_string(file_contents: &str) -> Result<CrodotConfig, Box<dyn error::Error>> {
+    let llm_config: CrodotConfig = serde_json::from_str(file_contents)?;
     Ok(llm_config)
 }
 
 /// Generates the llm that we use during our session
 /// Pass it a location of a config file with assorted settings
 pub fn generate_llm_provider(
-    config_location: &str,
+    llm_config: CrodotConfig,
 ) -> Result<Arc<dyn LLMProvider>, Box<dyn error::Error>> {
-    let llm_config = read_llm_config_file(config_location)?;
-    log::info!("Read config");
-
     // Try to get api key from env var
     let api_key = std::env::var(llm_config.env_var_key)?;
 
