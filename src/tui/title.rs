@@ -223,12 +223,17 @@ fn fetch_project_info(app_state: &AppState, screen_state: &mut TitleState) {
 }
 
 fn set_project_file(app_state: &mut AppState, project_name: &ProjectName) {
-    if let Ok(project) = read_project_file_with_location_string(&project_name.config_location) {
-        app_state.current_project = Some(project);
-        app_state.screen = Screen::Menu;
-    } else {
-        log::error!("Could not read project");
-        // TODO Change to proper error
+    match read_project_file_with_location_string(&project_name.config_location) {
+        Ok(project) => {
+            app_state.current_project = Some(project);
+            app_state.screen = Screen::Menu;
+        }
+        Err(err) => {
+            app_state.error_msg = Some(format!(
+                "Could not load project, because {err}.\nProgram will exit."
+            ));
+            app_state.unrecoverable_error = true;
+        }
     }
 }
 

@@ -13,7 +13,9 @@ use ratatui::{
         execute,
         terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     },
-    widgets::Paragraph,
+    layout::Rect,
+    style::Stylize,
+    widgets::{Block, Clear, Paragraph, Wrap},
 };
 
 use crate::{AppState, LlmResponseState, Screen};
@@ -24,6 +26,8 @@ use crate::tui::llmresponse::{
 use crate::tui::llmscreen::{create_llm_screen_state, draw_llm_screen, handle_event_llm_screen};
 use crate::tui::menu::{create_menu_state, draw_menu, handle_event_menu};
 use crate::tui::title::{create_title_state, draw_title, handle_event_title};
+
+use super::layoututils::get_inner_rect;
 
 pub fn start_tui(app_state: AppState) -> Result<(), Box<dyn Error>> {
     // Setup terminal and stuff
@@ -74,7 +78,7 @@ where
         // Draw stuff
         terminal.draw(|frame| {
             // Check if screen size is ok
-            if frame.area().width < 70 || frame.area().height < 25 {
+            if frame.area().width < 80 || frame.area().height < 35 {
                 draw_too_small_screen(frame);
             } else {
                 match app_state.screen {
@@ -84,6 +88,10 @@ where
                     Screen::LlmResponse => {
                         draw_llm_response_screen(frame, &mut app_state, &mut llm_response_state)
                     }
+                }
+                // Check for error message, we draw this later
+                if let Some(error_msg) = &app_state.error_msg {
+                    draw_error_message(frame, error_msg);
                 }
             }
         })?;
@@ -105,6 +113,17 @@ where
                 // Generic exit code
                 if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('q') {
                     app_state.exit = true;
+                    continue;
+                }
+                // Check for error
+                // Exit on unrecoverable error
+                if app_state.error_msg.is_some() {
+                    if key.code == KeyCode::Esc {
+                        app_state.error_msg = None;
+                        if app_state.unrecoverable_error {
+                            app_state.exit = true;
+                        }
+                    }
                     continue;
                 }
                 // Pass key event to screen module
@@ -146,5 +165,21 @@ fn draw_too_small_screen(frame: &mut Frame) {
     frame.render_widget(
         Paragraph::new("The terminal windows is too small. Please increase its size."),
         frame.area(),
+    );
+}
+
+fn draw_error_message(frame: &mut Frame, error_msg: &str) {
+    let error_rect = Rect {
+        x: 3,
+        y: 3,
+        width: frame.area().width - 6,
+        height: 8,
+    };
+
+    frame.render_widget(Clear, error_rect);
+    frame.render_widget(Block::bordered().red(), error_rect);
+    frame.render_widget(
+        Paragraph::new(error_msg).wrap(Wrap { trim: true }),
+        get_inner_rect(error_rect, 2, 2, 2, 1),
     );
 }

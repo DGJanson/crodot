@@ -59,6 +59,10 @@ struct AppState {
     screen: Screen,
     exit: bool,
 
+    // Error Stuff
+    error_msg: Option<String>,
+    unrecoverable_error: bool,
+
     // Project stuff
     available_projects: Option<Vec<String>>,
     current_project: Option<Project>,
@@ -98,6 +102,8 @@ fn generate_app_state(
     AppState {
         screen: Screen::Title,
         exit: false,
+        error_msg: None,
+        unrecoverable_error: false,
         available_projects: projects,
         current_project: None,
         llm_provider,
