@@ -67,6 +67,7 @@ pub fn draw_llm_response_screen(
         let function_rect = get_center_rect(frame.area(), 30, 10);
         frame.render_widget(Block::bordered(), function_rect);
         render_menu_shortcut_option(frame, function_rect, "l", "LLM prompt", 0);
+        render_menu_shortcut_option(frame, function_rect, "f", "file manager", 1);
         render_menu_shortcut_option(frame, function_rect, "m", "Main menu", 4);
     }
 }
@@ -81,6 +82,10 @@ pub fn handle_event_llm_response_screen(
             KeyCode::Char('l') => {
                 screen_state.screen_mode = LlmResponseMode::Main;
                 state.screen = Screen::Llm;
+            }
+            KeyCode::Char('f') => {
+                screen_state.screen_mode = LlmResponseMode::Main;
+                state.screen = Screen::File;
             }
             KeyCode::Char('m') => {
                 screen_state.screen_mode = LlmResponseMode::Main;

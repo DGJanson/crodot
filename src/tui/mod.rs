@@ -8,6 +8,7 @@ mod layoututils;
 mod utils;
 
 // The different screens go here
+pub mod filescreen;
 pub mod llmresponse;
 pub mod llmscreen;
 pub mod menu;

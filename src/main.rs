@@ -18,6 +18,7 @@ enum Screen {
     Menu,
     Llm,
     LlmResponse,
+    File,
 }
 
 #[derive(PartialEq, Copy, Clone)]

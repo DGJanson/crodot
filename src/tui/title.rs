@@ -244,7 +244,7 @@ CRODOT is a tool for coding with AI's. Some more info will be added to this scre
 
 Press ctrl + q to exit the app at any time.
 
-Pressing space will open up the navigation menu.
+Pressing space will open up the navigation menu. Esc will close most popups.
 
 Pressing ? will (sometimes) open a help - shortcut menu.
 "#;

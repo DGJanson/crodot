@@ -20,6 +20,9 @@ use ratatui::{
 
 use crate::{AppState, LlmResponseState, Screen};
 
+use crate::tui::filescreen::{
+    create_files_screen_state, draw_file_screen, handle_event_file_screen,
+};
 use crate::tui::llmresponse::{
     create_llm_response_state, draw_llm_response_screen, handle_event_llm_response_screen,
 };
@@ -67,6 +70,7 @@ where
     let mut menu_state = create_menu_state();
     let mut llm_state = create_llm_screen_state();
     let mut llm_response_state = create_llm_response_state();
+    let mut file_screen_state = create_files_screen_state();
 
     loop {
         // Check if we are in exit mode
@@ -87,6 +91,9 @@ where
                     Screen::Llm => draw_llm_screen(frame, &mut app_state, &mut llm_state),
                     Screen::LlmResponse => {
                         draw_llm_response_screen(frame, &mut app_state, &mut llm_response_state)
+                    }
+                    Screen::File => {
+                        draw_file_screen(frame, &mut app_state, &mut file_screen_state);
                     }
                 }
                 // Check for error message, we draw this later
@@ -136,6 +143,9 @@ where
                         &mut app_state,
                         &mut llm_response_state,
                     ),
+                    Screen::File => {
+                        handle_event_file_screen(key, &mut app_state, &mut file_screen_state)
+                    }
                 }
             }
         }

@@ -48,8 +48,8 @@ pub fn get_center_rect(parent: Rect, width: u16, height: u16) -> Rect {
     let half_height = height / 2;
 
     Rect {
-        x: parent.width / 2 - half_width,
-        y: parent.height / 2 - half_height,
+        x: parent.x + (parent.width / 2 - half_width),
+        y: parent.y + (parent.height / 2 - half_height),
         width,
         height,
     }

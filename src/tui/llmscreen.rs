@@ -111,7 +111,8 @@ pub fn draw_llm_screen(frame: &mut Frame, state: &mut AppState, screen_state: &m
         render_menu_shortcut_option(frame, centered_rect, "x", "reset prompt", 0);
         render_menu_shortcut_option(frame, centered_rect, "s", "send prompt", 1);
         render_menu_shortcut_option(frame, centered_rect, "r", "llm response", 3);
-        render_menu_shortcut_option(frame, centered_rect, "m", "back to menu", 5);
+        render_menu_shortcut_option(frame, centered_rect, "f", "file manager", 4);
+        render_menu_shortcut_option(frame, centered_rect, "m", "back to menu", 6);
     }
 
     // Keyhelp
@@ -175,6 +176,11 @@ pub fn handle_event_llm_screen(
                 // Go to menu
                 screen_state.screen_mode = LlmScreenMode::Main;
                 state.screen = Screen::LlmResponse;
+            }
+            KeyCode::Char('f') => {
+                // Go to menu
+                screen_state.screen_mode = LlmScreenMode::Main;
+                state.screen = Screen::File;
             }
             KeyCode::Char('m') => {
                 // Go to menu
