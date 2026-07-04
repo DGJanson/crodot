@@ -5,7 +5,7 @@
 
 use std::{sync::Arc, time::Instant};
 
-use llm::{LLMProvider, chat::ChatMessage};
+use llm::LLMProvider;
 
 use crate::crllm::llm_call::call_llm;
 

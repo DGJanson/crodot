@@ -46,6 +46,7 @@ pub fn create_new_project(work_dir: PathBuf) -> Project {
 
 // A custom error we can use in case something goes wrong
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, thiserror::Error)]
 pub enum ProjectError {
     #[error("Could not write Project file")]

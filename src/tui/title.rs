@@ -6,7 +6,7 @@ use crossterm::event::KeyCode;
 use ratatui::Frame;
 use ratatui::crossterm::event;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Style, Stylize};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
@@ -20,7 +20,6 @@ use super::utils::render_menu_shortcut_option;
 pub enum TitleFunction {
     Title,
     Function,
-    ProjectNew,
     ProjectOpen,
 }
 
@@ -185,7 +184,6 @@ pub fn handle_event_title(
             KeyCode::Char('q') => state.exit = true,
             _ => title_state.function = TitleFunction::Title,
         },
-        _ => title_state.function = TitleFunction::Title,
     }
 }
 

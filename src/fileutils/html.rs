@@ -4,7 +4,7 @@ use html_to_markdown_rs;
 
 pub fn get_markdown_from_web(url: &str) -> String {
     let html_text = get_html_from_web(url);
-    if html_text != "" {
+    if !html_text.is_empty() {
         let try_markdown_text = html_to_markdown_rs::convert(&html_text, None);
         match try_markdown_text {
             Ok(md_text) => md_text,

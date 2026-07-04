@@ -3,8 +3,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
-    layout::Rect,
-    style::Stylize,
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 

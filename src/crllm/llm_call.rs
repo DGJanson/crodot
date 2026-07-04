@@ -18,7 +18,7 @@ pub fn start_call_llm(app_state: &mut AppState) {
 
     std::thread::spawn(move || {
         let output = call_llm(prompt, prompt_mode, llm_provider);
-        let result = sender.send(output);
+        let _result = sender.send(output);
     });
 }
 
