@@ -21,11 +21,13 @@ enum LlmResponseMode {
 
 pub struct LlmResponseScreenState {
     screen_mode: LlmResponseMode,
+    result_scroll: u16,
 }
 
 pub fn create_llm_response_state() -> LlmResponseScreenState {
     LlmResponseScreenState {
         screen_mode: LlmResponseMode::Main,
+        result_scroll: 0,
     }
 }
 
@@ -55,7 +57,9 @@ pub fn draw_llm_response_screen(
 
     if state.llm_response_state == LlmResponseState::NewResponse {
         frame.render_widget(
-            Paragraph::new(state.llm_response.as_str()).wrap(Wrap { trim: true }),
+            Paragraph::new(state.llm_response.as_str())
+                .wrap(Wrap { trim: true })
+                .scroll((screen_state.result_scroll, 0)),
             // Pad horizontal by 2, since we drew a border
             get_inner_rect_pad(right_rect, 2, 1),
         );
@@ -93,6 +97,16 @@ pub fn handle_event_llm_response_screen(
         },
         LlmResponseMode::Main => match key.code {
             KeyCode::Char(' ') => screen_state.screen_mode = LlmResponseMode::Function,
+            // scroll function
+            KeyCode::Char('j') => screen_state.result_scroll += 3,
+            KeyCode::Char('k') => {
+                if screen_state.result_scroll > 2 {
+                    screen_state.result_scroll -= 3;
+                }
+            }
+            KeyCode::Char('K') => {
+                screen_state.result_scroll = 0;
+            }
             _ => {}
         },
     }
