@@ -19,6 +19,8 @@ pub fn start_call_llm(app_state: &mut AppState) {
         prompt.as_str(),
         prompt_mode,
         app_state.current_project.as_ref(),
+        app_state.continue_prompt,
+        app_state.last_prompt.as_str(),
     );
 
     // Check if we got the complete prompt, otherwise send error to app
@@ -60,7 +62,15 @@ pub fn call_llm(
                     match response_opt {
                         Ok(response) => {
                             // We receive a ChatResponse
-                            response.text().unwrap_or_default()
+                            match prompt_mode {
+                                // In case of question, we replace spaces with nbsp
+                                // For better visualisation
+                                LlmMode::Question => {
+                                    response.text().unwrap_or_default().replace(" ", "\u{a0}")
+                                }
+                                // All other cases simple return as is
+                                _ => response.text().unwrap_or_default(),
+                            }
                         }
                         Err(e) => {
                             format!("ERROR::From Llm Call -> {e:?}")
@@ -74,49 +84,60 @@ pub fn call_llm(
 }
 
 /// Generate the complete prompt, based on the project settings
+/// To create a prompt based on an earlier prompt, ie continue conversation
+/// Set the continue_prompt and last_prompt vars
 #[allow(clippy::uninlined_format_args)]
 fn create_complete_prompt(
     prompt: &str,
     prompt_mode: LlmMode,
     project: Option<&Project>,
+    continue_prompt: bool,
+    last_prompt: &str,
 ) -> Result<String, FileError> {
     // So we are concating a bunch of strings.
     // This is going to be inefficient, but I am sticking with
     // a bunch of format!'s for now...
     // TODO? look for a more efficient way
-    let mut result = format!(
-        "The request is a {} request, so please handle request as described in system prompt.",
-        prompt_mode
-    );
+    let mut result = if continue_prompt {
+        last_prompt.to_string()
+    } else {
+        format!(
+            "The request is a {} request, so please handle request as described in system prompt.",
+            prompt_mode
+        )
+    };
 
-    if let Some(p) = project {
-        // Get description.
-        match &p.desc_file {
-            Some(df) => {
-                let project_desc = read_file_text(df)?;
+    // We only draw the project info once, of course
+    if !continue_prompt {
+        if let Some(p) = project {
+            // Get description.
+            match &p.desc_file {
+                Some(df) => {
+                    let project_desc = read_file_text(df)?;
+                    result = format!(
+                        "{}\n\nThe project description is:\n\n```\n{}\n```",
+                        result, project_desc
+                    );
+                }
+                None => result = format!("{}\n\nNo project description was included.\n\n", result),
+            }
+
+            // Create dir structure
+            result = format!(
+                "{}\n\nThe dir structure of the project is:\n\n{}\n\n",
+                result,
+                create_dir_structure(&p.directory)
+            );
+
+            // Read active files
+            for file in p.file_active_list.iter() {
+                let file_content = read_file_text(file)?;
+                let file_name = file.to_string_lossy();
                 result = format!(
-                    "{}\n\nThe project description is:\n\n```\n{}\n```",
-                    result, project_desc
+                    "{}File: {} has the following contents:\n```\n{}```\n\n",
+                    result, file_name, file_content
                 );
             }
-            None => result = format!("{}\n\nNo project description was included.\n\n", result),
-        }
-
-        // Create dir structure
-        result = format!(
-            "{}\n\nThe dir structure of the project is:\n\n{}\n\n",
-            result,
-            create_dir_structure(&p.directory)
-        );
-
-        // Read active files
-        for file in p.file_active_list.iter() {
-            let file_content = read_file_text(file)?;
-            let file_name = file.to_string_lossy();
-            result = format!(
-                "{}File: {} has the following contents:\n```\n{}```\n\n",
-                result, file_name, file_content
-            );
         }
     }
 

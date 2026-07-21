@@ -1,6 +1,7 @@
 mod crllm; // crodot llm crate
 mod fileutils;
 mod project;
+mod state;
 mod tui;
 
 mod clitests;
@@ -76,9 +77,17 @@ struct AppState {
     llm_response: String,
     llm_response_secs: u16,
 
+    // These vars will allow us to continue prompting
+    last_prompt: String,
+    continue_prompt: bool,
+
     // Message channel (for async llm calls)
     sender_channel: Sender<String>,
     receiver_channel: Receiver<String>,
+
+    // Some cross screen communication is handled
+    // via this state
+    wipe_llm_input_prompt: bool,
 }
 
 fn read_command_line_args() -> Result<Vec<String>, Box<dyn std::error::Error>> {
@@ -113,8 +122,11 @@ fn generate_app_state(
         llm_response_state: LlmResponseState::Idle,
         llm_response: String::default(),
         llm_response_secs: 0,
+        last_prompt: String::default(),
+        continue_prompt: false,
         sender_channel: tx,
         receiver_channel: rx,
+        wipe_llm_input_prompt: false,
     }
 }
 

@@ -79,6 +79,14 @@ where
             return Ok(true);
         }
 
+        // Some cross screen communication is possible
+        // KEEP TO MINIMUM
+        // Check it here
+        if app_state.wipe_llm_input_prompt {
+            app_state.wipe_llm_input_prompt = false; // reset
+            llm_state.prompt_area.reset();
+        }
+
         // Draw stuff
         terminal.draw(|frame| {
             // Check if screen size is ok

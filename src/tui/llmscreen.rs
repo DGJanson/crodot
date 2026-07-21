@@ -7,7 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-use crate::{AppState, LlmMode, LlmResponseState, Screen};
+use crate::{AppState, LlmMode, LlmResponseState, Screen, state::reset_prompt};
 
 use crate::tui::components::textarea;
 use crate::tui::layoututils::get_center_rect;
@@ -24,13 +24,11 @@ enum LlmScreenMode {
 
 pub struct LlmScreenState {
     screen_mode: LlmScreenMode,
-    llm_mode: LlmMode,
-    prompt_area: textarea::TextArea,
+    pub prompt_area: textarea::TextArea,
 }
 
 pub fn create_llm_screen_state() -> LlmScreenState {
     LlmScreenState {
-        llm_mode: LlmMode::Question,
         screen_mode: LlmScreenMode::Main,
         prompt_area: textarea::TextArea::new(),
     }
@@ -52,13 +50,15 @@ pub fn draw_llm_screen(frame: &mut Frame, state: &mut AppState, screen_state: &m
 
     let text = vec![
         Line::from("LLM Mode:"),
-        Line::from(format!("{}", screen_state.llm_mode).blue()),
+        Line::from(format!("{}", state.current_prompt_mode).blue()),
         Line::default(),
         Line::from(INFO_PANEL_PT1),
         Line::default(),
         Line::from(INFO_PANEL_PT2),
         Line::default(),
         Line::from(INFO_PANEL_PT3),
+        Line::default(),
+        Line::from(INFO_PANEL_PT4),
     ];
 
     frame.render_widget(
@@ -106,13 +106,14 @@ pub fn draw_llm_screen(frame: &mut Frame, state: &mut AppState, screen_state: &m
     // Function navigation mode
     if let LlmScreenMode::Function = screen_state.screen_mode {
         // Show the possible key options for this screen
-        let centered_rect = get_center_rect(frame.area(), 34, 10);
+        let centered_rect = get_center_rect(frame.area(), 34, 12);
         frame.render_widget(Block::bordered(), centered_rect);
-        render_menu_shortcut_option(frame, centered_rect, "x", "reset prompt", 0);
+        render_menu_shortcut_option(frame, centered_rect, "c", "clear prompt", 0);
         render_menu_shortcut_option(frame, centered_rect, "s", "send prompt", 1);
-        render_menu_shortcut_option(frame, centered_rect, "r", "llm response", 3);
-        render_menu_shortcut_option(frame, centered_rect, "f", "file manager", 4);
-        render_menu_shortcut_option(frame, centered_rect, "m", "back to menu", 6);
+        render_menu_shortcut_option(frame, centered_rect, "x", "reset prompt", 3);
+        render_menu_shortcut_option(frame, centered_rect, "r", "llm response", 5);
+        render_menu_shortcut_option(frame, centered_rect, "f", "file manager", 6);
+        render_menu_shortcut_option(frame, centered_rect, "m", "back to menu", 7);
     }
 
     // Keyhelp
@@ -139,16 +140,24 @@ pub fn handle_event_llm_screen(
     match screen_state.screen_mode {
         LlmScreenMode::Main => match key.code {
             KeyCode::Char(' ') => screen_state.screen_mode = LlmScreenMode::Function,
-            KeyCode::Char('f') => switch_llm_mode(screen_state),
-            KeyCode::Char('F') => screen_state.llm_mode = LlmMode::Mock,
+            KeyCode::Char('f') => switch_llm_mode(state),
+            KeyCode::Char('F') => state.current_prompt_mode = LlmMode::Mock,
             KeyCode::Char('i') => screen_state.screen_mode = LlmScreenMode::Prompt,
             KeyCode::Char('?') => screen_state.screen_mode = LlmScreenMode::KeyHelp,
             _ => {}
         },
         LlmScreenMode::Function => match key.code {
+            KeyCode::Char('c') => {
+                // Clear prompt.
+                // Only clear the textarea
+                screen_state.prompt_area.reset();
+                screen_state.screen_mode = LlmScreenMode::Main;
+            }
             KeyCode::Char('x') => {
-                // reset prompt text area
-                screen_state.prompt_area = textarea::TextArea::new();
+                // reset prompt
+                // Clear text area and remove all earlier prompts
+                screen_state.prompt_area.reset();
+                reset_prompt(state);
                 screen_state.screen_mode = LlmScreenMode::Main;
             }
             KeyCode::Char('s') => {
@@ -167,7 +176,6 @@ pub fn handle_event_llm_screen(
                 // Clone the prompt to the app state
                 // and change to response screen
                 state.current_prompt = screen_state.prompt_area.text.clone();
-                state.current_prompt_mode = screen_state.llm_mode;
                 state.screen = Screen::LlmResponse;
                 // Now we can start the llm call
                 start_call_llm(state);
@@ -196,11 +204,11 @@ pub fn handle_event_llm_screen(
     }
 }
 
-fn switch_llm_mode(screen_state: &mut LlmScreenState) {
-    if screen_state.llm_mode == LlmMode::Question {
-        screen_state.llm_mode = LlmMode::Coding;
+fn switch_llm_mode(state: &mut AppState) {
+    if state.current_prompt_mode == LlmMode::Question {
+        state.current_prompt_mode = LlmMode::Coding;
     } else {
-        screen_state.llm_mode = LlmMode::Question;
+        state.current_prompt_mode = LlmMode::Question;
     }
 }
 
@@ -210,4 +218,6 @@ const INFO_PANEL_PT1: &str = "You can prompt the LLM from this screen.";
 
 const INFO_PANEL_PT2: &str = "Use ? key to see keyboard commands.";
 
-const INFO_PANEL_PT3: &str = "You can only send a new prompt when the LLM is idle.";
+const INFO_PANEL_PT3: &str = "Note the difference between clear and reset prompt. Clear will just clear the textarea. Reset will start a completely new chat.";
+
+const INFO_PANEL_PT4: &str = "You can only send a new prompt when the LLM is idle.";

@@ -23,6 +23,13 @@ impl TextArea {
         }
     }
 
+    /// Reset the text
+    /// All input is removed
+    pub fn reset(&mut self) {
+        self.text = String::default();
+        self.cursor = 0;
+    }
+
     // ---- Editing Logic -----------------------------------------------------
 
     pub fn handle_key(&mut self, key: KeyEvent) {
