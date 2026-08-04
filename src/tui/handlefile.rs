@@ -8,13 +8,16 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Stylize,
+    style::{Style, Stylize},
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
 use crate::{
     AppState, Screen,
-    fileutils::coderesponse::{FileChange, write_code_response_file},
+    fileutils::coderesponse::{
+        ChangeMode, FileChange, normalize_filepath, write_code_response_file,
+    },
     tui::{
         layoututils::{get_center_rect, get_inner_rect_pad, horizontal_left_divide_by_fraction},
         utils::{render_main_border, render_menu_shortcut_option},
@@ -70,16 +73,67 @@ pub fn draw_file_handler_screen(
         }
     };
 
+    let project = match &state.current_project {
+        Some(p) => p,
+        None => {
+            // This should not be possible
+            state.error_msg = Some(String::from("No project selected. Returning."));
+            state.screen = Screen::Title;
+            return;
+        }
+    };
+
     let (desc_rect, file_rect) = horizontal_left_divide_by_fraction(frame.area(), 4);
 
     let block = Block::default().borders(Borders::RIGHT);
-    let desc_text = format!(
-        "File contents are shown right. Press h key to open handle menu.\n\nFilename: {}\n\nMode: {}\n\nDescription of changes:\n\n{}\n\nPLEASE CHECK DIR CARFEULLY. Press f to override location",
-        file_changes.filename, file_changes.mode, file_changes.description
-    );
+    // Assemble lines
+    let mut lines = vec![];
+    lines.push(Line::from(LEFT_PANEL_PT1));
+    lines.push(Line::from(""));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("Filename: ", Style::default()),
+        Span::styled(&file_changes.filename, Style::default().yellow()),
+    ]));
+    lines.push(Line::from(""));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("Mode: ", Style::default()),
+        Span::styled(format!("{}", &file_changes.mode), Style::default().yellow()),
+    ]));
+    lines.push(Line::from(""));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("Description of changes: ", Style::default()),
+        Span::styled(&file_changes.description, Style::default()),
+    ]));
+    lines.push(Line::from(""));
+    lines.push(Line::from(""));
+    lines.push(Line::from(LEFT_PANEL_PT2));
+    lines.push(Line::from(""));
+    lines.push(Line::from(""));
+
+    // If edited file exists, check if it was in context. Give warning if not.
+    let file_path = normalize_filepath(&project.directory, &file_changes.filename);
+    if file_changes.mode == ChangeMode::Edit {
+        if !project.file_active_list.contains(&file_path) {
+            lines.push(Line::from(Span::styled(
+                LEFT_PANEL_FILE_NOT_ADDED_WARNING,
+                Style::default().red(),
+            )));
+        }
+    };
+    if file_changes.mode == ChangeMode::New {
+        if file_path.is_file() {
+            lines.push(Line::from(Span::styled(
+                LEFT_PANEL_FILE_ALREADY_EXISTS_WARNING,
+                Style::default().red(),
+            )));
+        }
+    };
 
     frame.render_widget(
-        Paragraph::new(desc_text)
+        Paragraph::new(lines)
             .wrap(Wrap { trim: true })
             .block(block)
             .scroll((screen_state.file_scroll, 0)),
@@ -254,3 +308,14 @@ fn get_file_change(state: &AppState) -> Option<&FileChange> {
         None
     }
 }
+
+// -------- STATIC TEXTS
+const LEFT_PANEL_PT1: &str = "File contents are shown right. Press h key to open handle menu.\n\n";
+
+const LEFT_PANEL_PT2: &str = "PLEASE CHECK DIR CARFEULLY. Press f to override location\n\n";
+
+const LEFT_PANEL_FILE_NOT_ADDED_WARNING: &str =
+    "The edited file was NOT added to the context. There is a serious chance of errors!";
+
+const LEFT_PANEL_FILE_ALREADY_EXISTS_WARNING: &str =
+    "The file is labeled as new, but it already exists. There is a serious chance of errors!";

@@ -119,7 +119,7 @@ pub fn write_code_response_file(state: &mut AppState, override_filepath: &str) -
     }
 }
 
-fn normalize_filepath(source_dir: &PathBuf, filename: &str) -> PathBuf {
+pub fn normalize_filepath(source_dir: &PathBuf, filename: &str) -> PathBuf {
     // check if filename starts with seperator
     let rel_filename = filename.trim_start_matches("/").trim_start_matches("\\");
 

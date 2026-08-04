@@ -166,6 +166,7 @@ fn draw_edit_list(
             Paragraph::new("No files selected."),
             get_center_rect(rect, 20, 1),
         );
+        return;
     }
 
     // we have at least some files in the selected list
@@ -307,6 +308,11 @@ pub fn handle_event_file_screen(
                 match key.code {
                     // Two codes to navigate through edit list
                     KeyCode::Char('j') => {
+                        if project.file_short_list.len() == 0 {
+                            screen_state.edit_list_index = 0;
+                            return;
+                        }
+                        // We can do unchecked sub, since we know the len is not 0
                         if u16::try_from(project.file_short_list.len() - 1).unwrap_or_default()
                             > screen_state.edit_list_index
                         {
@@ -441,6 +447,11 @@ fn update_file_list(app_state: &mut AppState, screen_state: &mut FileScreenState
     project.file_active_list.push(selected_file);
 
     screen_state.max_filename_len = get_max_filename_len(project);
+    // Check if our select index still makes sense
+    // Simply reset otherwise
+    if screen_state.edit_list_index as usize >= project.file_short_list.len() {
+        screen_state.edit_list_index = 0;
+    }
 }
 
 fn get_max_filename_len(project: &Project) -> u16 {
@@ -493,9 +504,9 @@ fn delete_selected_from_list(project: &mut Project, delete_index: u16) {
         if let Some(index) = active_index {
             project.file_active_list.remove(index);
         }
+        // Always remove from shortlist
+        project.file_short_list.remove(delete_index as usize);
     }
-    // Now remove from shortlist
-    project.file_short_list.remove(delete_index as usize);
 }
 
 // ------------------------------------------------------------------------
