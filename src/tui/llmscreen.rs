@@ -88,8 +88,6 @@ pub fn draw_llm_screen(frame: &mut Frame, state: &mut AppState, screen_state: &m
         height: screen_h - 5,
     };
 
-    screen_state.prompt_area.render(frame, prompt_area_rect);
-
     // Render screen state, in some cases
     if let LlmScreenMode::Prompt = screen_state.screen_mode {
         frame.render_widget(
@@ -101,6 +99,13 @@ pub fn draw_llm_screen(frame: &mut Frame, state: &mut AppState, screen_state: &m
                 height: 1,
             },
         );
+        screen_state
+            .prompt_area
+            .render(frame, prompt_area_rect, true);
+    } else {
+        screen_state
+            .prompt_area
+            .render(frame, prompt_area_rect, false);
     }
 
     // Function navigation mode
@@ -169,13 +174,13 @@ pub fn handle_event_llm_screen(
                     return;
                 }
                 // Check if the prompt actually contains text
-                if screen_state.prompt_area.text.trim().is_empty() {
+                if screen_state.prompt_area.get_text().trim().is_empty() {
                     return;
                 }
                 // "Send the prompt", reset this screen state first
                 // Clone the prompt to the app state
                 // and change to response screen
-                state.current_prompt = screen_state.prompt_area.text.clone();
+                state.current_prompt = screen_state.prompt_area.get_text().clone();
                 state.screen = Screen::LlmResponse;
                 // Now we can start the llm call
                 start_call_llm(state);

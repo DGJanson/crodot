@@ -66,7 +66,8 @@ pub fn call_llm(
                                 // In case of question, we replace spaces with nbsp
                                 // For better visualisation
                                 LlmMode::Question => {
-                                    response.text().unwrap_or_default().replace(" ", "\u{a0}")
+                                    // response.text().unwrap_or_default().replace(" ", "\u{a0}")
+                                    response.text().unwrap_or_default()
                                 }
                                 // All other cases simple return as is
                                 _ => response.text().unwrap_or_default(),

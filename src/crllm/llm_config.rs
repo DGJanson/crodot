@@ -25,6 +25,7 @@ pub struct CrodotConfig {
 #[serde(rename_all = "lowercase")]
 enum LlmProvider {
     AzureOpenAi,
+    OpenRouter,
 }
 
 pub fn read_llm_config_file(location: &str) -> Result<CrodotConfig, Box<dyn error::Error>> {
@@ -58,7 +59,7 @@ pub fn generate_llm_provider(
     llm_builder = llm_builder.system(system_prompt_txt);
 
     // optional settings
-    if let Some(base_url) = llm_config.base_url {
+    if let Some(base_url) = llm_config.base_url.as_ref() {
         llm_builder = llm_builder.base_url(base_url);
     }
 
@@ -71,7 +72,16 @@ pub fn generate_llm_provider(
     }
 
     match llm_config.provider {
-        LlmProvider::AzureOpenAi => llm_builder = llm_builder.backend(LLMBackend::AzureOpenAI),
+        LlmProvider::AzureOpenAi => {
+            llm_builder = llm_builder.backend(LLMBackend::AzureOpenAI);
+        }
+        LlmProvider::OpenRouter => {
+            // Fall back to OpenRouter's API endpoint if base_url wasn't manually set in JSON
+            if llm_config.base_url.is_none() {
+                llm_builder = llm_builder.base_url("https://openrouter.ai/api/v1".to_string());
+            }
+            llm_builder = llm_builder.backend(LLMBackend::OpenRouter);
+        }
     }
 
     let possible_llm_provider = llm_builder.build();

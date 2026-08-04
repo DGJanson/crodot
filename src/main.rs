@@ -14,12 +14,15 @@ use std::sync::{
 
 use project::Project;
 
+use crate::fileutils::coderesponse::CodingResponse;
+
 enum Screen {
     Title,
     Menu,
     Llm,
     LlmResponse,
     File,
+    HandleFile,
 }
 
 #[derive(PartialEq, Copy, Clone)]
@@ -76,6 +79,8 @@ struct AppState {
     llm_response_state: LlmResponseState,
     llm_response: String,
     llm_response_secs: u16,
+    llm_response_code_response: Option<CodingResponse>,
+    llm_response_code_selected: usize,
 
     // These vars will allow us to continue prompting
     last_prompt: String,
@@ -122,6 +127,8 @@ fn generate_app_state(
         llm_response_state: LlmResponseState::Idle,
         llm_response: String::default(),
         llm_response_secs: 0,
+        llm_response_code_response: None,
+        llm_response_code_selected: 9999,
         last_prompt: String::default(),
         continue_prompt: false,
         sender_channel: tx,

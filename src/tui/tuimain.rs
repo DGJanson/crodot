@@ -18,10 +18,15 @@ use ratatui::{
     widgets::{Block, Clear, Paragraph, Wrap},
 };
 
-use crate::{AppState, LlmResponseState, Screen};
+use crate::{
+    AppState, LlmMode, LlmResponseState, Screen, fileutils::coderesponse::parse_coding_response,
+};
 
 use crate::tui::filescreen::{
     create_files_screen_state, draw_file_screen, handle_event_file_screen,
+};
+use crate::tui::handlefile::{
+    create_file_handler_state, draw_file_handler_screen, handle_event_filehandler,
 };
 use crate::tui::llmresponse::{
     create_llm_response_state, draw_llm_response_screen, handle_event_llm_response_screen,
@@ -71,6 +76,7 @@ where
     let mut llm_state = create_llm_screen_state();
     let mut llm_response_state = create_llm_response_state();
     let mut file_screen_state = create_files_screen_state();
+    let mut file_handler_state = create_file_handler_state();
 
     loop {
         // Check if we are in exit mode
@@ -102,6 +108,9 @@ where
                     }
                     Screen::File => {
                         draw_file_screen(frame, &mut app_state, &mut file_screen_state);
+                    }
+                    Screen::HandleFile => {
+                        draw_file_handler_screen(frame, &mut app_state, &mut file_handler_state);
                     }
                 }
                 // Check for error message, we draw this later
@@ -152,7 +161,10 @@ where
                         &mut llm_response_state,
                     ),
                     Screen::File => {
-                        handle_event_file_screen(key, &mut app_state, &mut file_screen_state)
+                        handle_event_file_screen(key, &mut app_state, &mut file_screen_state);
+                    }
+                    Screen::HandleFile => {
+                        handle_event_filehandler(key, &mut app_state, &mut file_handler_state);
                     }
                 }
             }
@@ -167,8 +179,16 @@ where
             if app_state.llm_response_state == LlmResponseState::Waiting {
                 // set response to app_state and change llm state
                 if let Ok(response) = app_state.receiver_channel.try_recv() {
-                    app_state.llm_response = response;
-                    app_state.llm_response_state = LlmResponseState::NewResponse;
+                    match app_state.current_prompt_mode {
+                        LlmMode::Coding => {
+                            parse_coding_response(&mut app_state, response);
+                            app_state.llm_response_state = LlmResponseState::NewResponse;
+                        }
+                        _ => {
+                            app_state.llm_response = response;
+                            app_state.llm_response_state = LlmResponseState::NewResponse;
+                        }
+                    }
                 } else {
                     app_state.llm_response_secs += 1;
                 }

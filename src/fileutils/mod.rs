@@ -1,3 +1,4 @@
+pub mod coderesponse;
 pub mod dirs;
 pub mod errors;
 pub mod html;
