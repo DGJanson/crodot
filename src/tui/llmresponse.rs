@@ -1,9 +1,11 @@
 // The UI elements for receiving the LLM response
 
+use clipboard_rs::{Clipboard, ClipboardContext};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
-    style::Style,
+    style::{Color, Style},
+    text::Line,
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
@@ -30,6 +32,12 @@ pub struct LlmResponseScreenState {
     screen_mode: LlmResponseMode,
     result_scroll: u16,
     handle_file: String, // Store as string, cast later
+    // Some vars to select code
+    pub code_blocks: Vec<(usize, usize)>,
+    pub selected_block: usize,
+    pub selected: bool, // select nothing by default
+    selected_line: u16,
+    update_selected_scroll: bool,
 }
 
 pub fn create_llm_response_state() -> LlmResponseScreenState {
@@ -37,6 +45,11 @@ pub fn create_llm_response_state() -> LlmResponseScreenState {
         screen_mode: LlmResponseMode::Main,
         result_scroll: 0,
         handle_file: String::from("0"),
+        code_blocks: Vec::new(),
+        selected_block: 0,
+        selected: false,
+        selected_line: 0,
+        update_selected_scroll: false,
     }
 }
 
@@ -73,13 +86,34 @@ pub fn draw_llm_response_screen(
         if state.current_prompt_mode == LlmMode::Question
             || state.current_prompt_mode == LlmMode::Mock
         {
-            frame.render_widget(
-                Paragraph::new(state.llm_response.as_str())
-                    .wrap(Wrap { trim: false })
-                    .scroll((screen_state.result_scroll, 0)),
-                // Pad horizontal by 2, since we drew a border
-                get_inner_rect_pad(right_rect, 2, 1),
-            );
+            // We need to deal with selected code blocks -> two scenario's
+            // No code block selected, simply render the response string
+            // If a code block is selected we need to find the selected
+            // block and highlight it
+            if screen_state.selected {
+                // find block and render
+                let lines = get_higlighted_spans(&state.llm_response, screen_state);
+                // Check if we need to update our scroll
+                // Based on selected block
+                if screen_state.update_selected_scroll {
+                    screen_state.update_selected_scroll = false;
+                    screen_state.result_scroll = screen_state.selected_line;
+                }
+                frame.render_widget(
+                    Paragraph::new(lines)
+                        .wrap(Wrap { trim: false })
+                        .scroll((screen_state.result_scroll, 0)),
+                    get_inner_rect_pad(right_rect, 2, 1),
+                );
+            } else {
+                frame.render_widget(
+                    Paragraph::new(state.llm_response.as_str())
+                        .wrap(Wrap { trim: false })
+                        .scroll((screen_state.result_scroll, 0)),
+                    // Pad horizontal by 2, since we drew a border
+                    get_inner_rect_pad(right_rect, 2, 1),
+                );
+            }
         } else {
             // Coding response
             // Divide the screen in two parts:
@@ -124,7 +158,7 @@ pub fn draw_llm_response_screen(
                         &file.description
                     };
 
-                    file_list.push_str(&format!("{}.\n{}\n{}\n\n", num, filename, desc));
+                    file_list.push_str(&format!("{num}.\n{filename}\n{desc}\n\n",));
                 }
 
                 frame.render_widget(
@@ -210,6 +244,32 @@ pub fn handle_event_llm_response_screen(
             KeyCode::Char('K') => {
                 screen_state.result_scroll = 0;
             }
+
+            // For now we only handle [ ] presses when not in coding response
+            // TODO, implement [ ] selection for coding response
+            KeyCode::Char('[') => {
+                if state.current_prompt_mode != LlmMode::Coding && screen_state.selected_block >= 1
+                {
+                    screen_state.selected_block -= 1;
+                    screen_state.update_selected_scroll = true;
+                }
+            }
+            KeyCode::Char(']') => {
+                if state.current_prompt_mode != LlmMode::Coding {
+                    if !screen_state.selected && !screen_state.code_blocks.is_empty() {
+                        screen_state.selected = true;
+                        screen_state.update_selected_scroll = true;
+                    } else if screen_state.selected_block + 1 < screen_state.code_blocks.len() {
+                        screen_state.selected_block += 1;
+                        screen_state.update_selected_scroll = true;
+                    }
+                }
+            }
+            KeyCode::Char('y') => {
+                if state.current_prompt_mode != LlmMode::Coding {
+                    yank_to_clipboard(state, screen_state);
+                }
+            }
             _ => {}
         },
         LlmResponseMode::HandlePrompt => match key.code {
@@ -238,8 +298,7 @@ pub fn handle_event_llm_response_screen(
                 if screen_state.handle_file == "0" {
                     screen_state.handle_file = key.code.to_string();
                 } else {
-                    screen_state.handle_file =
-                        format!("{}{}", screen_state.handle_file, key.code.to_string());
+                    screen_state.handle_file = format!("{}{}", screen_state.handle_file, key.code);
                 }
             }
             KeyCode::Backspace => {
@@ -259,6 +318,77 @@ pub fn handle_event_llm_response_screen(
             }
             _ => {}
         },
+    }
+}
+
+// -------------------------------------------------------------------------
+// Some helper functions
+fn get_higlighted_spans<'a>(
+    response: &'a str,
+    screen_state: &mut LlmResponseScreenState,
+) -> Vec<Line<'a>> {
+    let selected_block = screen_state.code_blocks.get(screen_state.selected_block);
+    let mut lines = Vec::new();
+    match selected_block {
+        None => {
+            // Should be impossible, but in this case set selected to None
+            // And return nothing
+            screen_state.selected = false;
+            screen_state.selected_block = 0;
+        }
+        Some(block) => {
+            // Divide in three parts:
+            // Before selection,
+            // Selection,
+            // After selection
+            let select_start = block.0;
+            let select_end = block.1;
+            let mut nr_lines: u16 = 0;
+            // Add by line, since Line will gobble up all breaks
+            for line in response[0..select_start].split('\n') {
+                lines.push(Line::styled(line, Style::default()));
+                nr_lines += 1;
+            }
+            // set scroll pos to where our block begins
+            screen_state.selected_line = nr_lines.saturating_sub(5);
+            for line in response[select_start..select_end].split('\n') {
+                lines.push(Line::styled(
+                    line,
+                    Style::default().fg(Color::White).bg(Color::LightBlue),
+                ));
+            }
+            for line in response[select_end..].split('\n') {
+                lines.push(Line::styled(line, Style::default()));
+            }
+        }
+    }
+    lines
+}
+
+fn yank_to_clipboard(state: &mut AppState, screen_state: &LlmResponseScreenState) {
+    // Note we need to state to generate errors
+    // First check if we have selected anything
+    if screen_state.selected {
+        let ctx_opt = ClipboardContext::new();
+        match ctx_opt {
+            Err(e) => {
+                state.error_msg = Some(format!("Could not init clipboard, because {e}"));
+            }
+            Ok(ctx) => {
+                // Find the selected text
+                let Some(selected_block) =
+                    screen_state.code_blocks.get(screen_state.selected_block)
+                else {
+                    return;
+                };
+
+                let response = &state.llm_response;
+                let selected_text = &response[selected_block.0..selected_block.1];
+                if ctx.set_text(String::from(selected_text)).is_err() {
+                    state.error_msg = Some("Could not yank to clipboard".to_string())
+                }
+            }
+        }
     }
 }
 

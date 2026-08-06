@@ -19,7 +19,8 @@ use ratatui::{
 };
 
 use crate::{
-    AppState, LlmMode, LlmResponseState, Screen, fileutils::coderesponse::parse_coding_response,
+    AppState, LlmMode, LlmResponseState, Screen, crllm::llm_response_handler::handle_llm_response,
+    fileutils::coderesponse::parse_coding_response,
 };
 
 use crate::tui::filescreen::{
@@ -187,6 +188,8 @@ where
                         _ => {
                             app_state.llm_response = response;
                             app_state.llm_response_state = LlmResponseState::NewResponse;
+                            // Call handler that does some parsing for the LlmResponse screen
+                            handle_llm_response(&app_state, &mut llm_response_state);
                         }
                     }
                 } else {
