@@ -2,18 +2,16 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
-
 use crate::AppState;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct CodingResponse {
     pub error: Option<String>,
     pub message: String,
     pub code: Vec<FileChange>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct FileChange {
     pub filename: String,
     pub mode: ChangeMode,
@@ -21,8 +19,7 @@ pub struct FileChange {
     pub file_contents: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, PartialEq)]
 pub enum ChangeMode {
     New,
     Edit,
@@ -37,22 +34,179 @@ impl std::fmt::Display for ChangeMode {
     }
 }
 
+// We make a custom parsing error for the response
+// We only need it in this module
+#[derive(Debug, thiserror::Error)]
+enum CodingResponseError {
+    #[error("Invalid line: {0}")]
+    InvalidLine(String),
+    #[error("Unexpected format: {0}")]
+    InvalidFormat(String),
+}
+
+/// Parse an LLM coding response
+/// Note we use a somewhat custom text format
+/// (see the crodot system prompt in this repo)
+/// Will use the error of the AppState
+/// in case of any error
 pub fn parse_coding_response(state: &mut AppState, response: String) {
     let clean_response = sanitize_llm_response(&response);
-    let code_response_opt: Result<CodingResponse, serde_json::Error> =
-        serde_json::from_str(clean_response);
-    match code_response_opt {
-        Ok(code_response) => {
-            state.llm_response_code_response = Some(code_response);
-        }
+    match coding_response_handler(clean_response) {
+        Ok(cr) => state.llm_response_code_response = Some(cr),
         Err(e) => {
-            state.error_msg = Some(format!(
-                "Coud not parse coding response. Try again. Error message: {}, \n\n {}",
-                e, response
-            ));
-            state.llm_response_state = crate::LlmResponseState::Idle;
+            state.llm_response_code_response = None;
+            state.error_msg = Some(format!("{e}"));
         }
     }
+}
+
+fn coding_response_handler(response: &str) -> Result<CodingResponse, CodingResponseError> {
+    // We can parse the response linearly
+    // some housekeeping vars
+    let mut file_changes: Vec<FileChange> = Vec::new();
+    let mut description = String::new();
+    let mut error: Option<String> = None;
+
+    let mut cur_filename = String::new();
+    let mut cur_filemode = ChangeMode::New;
+    let mut cur_file_desc = String::new();
+    let mut file_contents: Vec<&str> = Vec::new(); // this will have the code
+
+    let mut finished_header = false;
+    let mut read_first_line = false;
+    let mut read_description = false;
+    let mut read_error = false;
+
+    let mut file_header_counter = 0; // to keep track of file vars
+    let mut collect_code = false;
+    // iterate
+    for line in response.lines() {
+        if !read_first_line {
+            if line.trim() != "- Response" {
+                return Err(CodingResponseError::InvalidLine(format!(
+                    "First line is not what it should be: {line}"
+                )));
+            } else {
+                read_first_line = true;
+                continue;
+            }
+        }
+        if !finished_header {
+            if line.trim() == "- Error" {
+                read_error = true;
+                continue;
+            } else if line.trim() == "- Message" {
+                read_description = true;
+                continue;
+            } else if read_error {
+                // Set error if line not empty
+                if !line.trim().is_empty() {
+                    error = Some(String::from(line));
+                }
+                read_error = false;
+            } else if read_description {
+                description = String::from(line);
+                read_description = false;
+            } else if line.trim() == "- Files" {
+                finished_header = true;
+                continue;
+            } else {
+                return Err(CodingResponseError::InvalidLine(format!(
+                    "Unexpected header line in response: {line}",
+                )));
+            }
+        }
+        if finished_header {
+            // Now we just read files
+            if file_header_counter <= 2 {
+                // Skip completely empty lines
+                if line.trim().is_empty() {
+                    continue;
+                }
+                // in file header
+                if !line.starts_with("-!-") || line.len() <= 4 {
+                    return Err(CodingResponseError::InvalidLine(format!(
+                        "Unexpected file header line in response: {line}"
+                    )));
+                }
+                if file_header_counter == 0 {
+                    let Some(filename) = line.strip_prefix("-!- ") else {
+                        return Err(CodingResponseError::InvalidLine(format!(
+                            "Unexpected file header line in response: {line}"
+                        )));
+                    };
+                    cur_filename = filename.to_string();
+                    file_header_counter += 1;
+                } else if file_header_counter == 1 {
+                    let Some(mode_str) = line.strip_prefix("-!- ") else {
+                        return Err(CodingResponseError::InvalidLine(format!(
+                            "Unexpected file header line in response: {line}"
+                        )));
+                    };
+                    match mode_str.trim().to_lowercase().as_str() {
+                        "new" => cur_filemode = ChangeMode::New,
+                        "edit" => cur_filemode = ChangeMode::Edit,
+                        _ => {
+                            return Err(CodingResponseError::InvalidLine(format!(
+                                "Invalid file mode: {line}"
+                            )));
+                        }
+                    }
+                    file_header_counter += 1;
+                } else if file_header_counter == 2 {
+                    let Some(file_desc) = line.strip_prefix("-!- ") else {
+                        return Err(CodingResponseError::InvalidLine(format!(
+                            "Unexpected file header line in response: {line}"
+                        )));
+                    };
+                    cur_file_desc = file_desc.to_string();
+                    file_header_counter += 1;
+                    collect_code = true; // Finished header
+                }
+            } else {
+                // Out of file header
+                if line.trim() == "-!-" {
+                    // End of code marker
+                    // Wrap up the code collection and create a FileChange object
+                    let fc = FileChange {
+                        filename: cur_filename,
+                        mode: cur_filemode,
+                        description: cur_file_desc,
+                        file_contents: file_contents.join("\n"),
+                    };
+                    file_changes.push(fc);
+                    // reset the vars
+                    cur_filename = String::new();
+                    cur_filemode = ChangeMode::New;
+                    cur_file_desc = String::new();
+                    file_contents.clear();
+                    // reset state
+                    collect_code = false;
+                    file_header_counter = 0;
+                } else if collect_code {
+                    // We are in file contents now
+                    file_contents.push(line);
+                } else if line.trim().is_empty() {
+                    // This is an edge case for trailing empty lines
+                    // simply ignore
+                    continue;
+                } else {
+                    // this is invalid state, this should not be possible
+                    return Err(CodingResponseError::InvalidFormat(format!(
+                        "Unexpected format / ordering of header markers. Line: {line}",
+                    )));
+                }
+            }
+        }
+    }
+    // We have seen all lines
+    // Create the coding response and set it
+    let cr = CodingResponse {
+        message: description,
+        error: error,
+        code: file_changes,
+    };
+    Ok(cr)
 }
 
 /// Cleans the LLM response of markdown
@@ -142,6 +296,8 @@ pub fn normalize_filepath(source_dir: &PathBuf, filename: &str) -> PathBuf {
 mod tests {
     use std::path::PathBuf;
 
+    use super::coding_response_handler;
+
     // Contains some test for file comparisons
     use super::normalize_filepath;
 
@@ -171,5 +327,51 @@ mod tests {
             normalize_filepath(&PathBuf::from("/test/src/src"), "\\src/test.rs"),
             PathBuf::from("/test/src/src/test.rs")
         );
+    }
+
+    #[test]
+    fn read_code_response() {
+        let cr_string = r#"- Response
+- Error
+
+- Message
+I have edited the main file, it now call the add function new file add.py.
+- Files
+-!- src/module/main.py
+-!- edit
+-!- Added add function call to main function
+"""
+Main entry point of the program  
+"""
+from .add import add
+
+def main():
+    print("Hello World")
+    # call add function here
+    add(2, 3)
+-!-
+-!- src/module/add.py
+-!- new
+-!- Create add function
+"""
+Module with some add functions
+"""
+
+def add(x, y):
+    return x + y
+-!-
+
+"#;
+        let cr_res = coding_response_handler(cr_string);
+        match cr_res {
+            Ok(cr) => {
+                assert!(true);
+                assert!(cr.error.is_none());
+            }
+            Err(e) => {
+                print!("{e}");
+                assert!(false);
+            }
+        }
     }
 }

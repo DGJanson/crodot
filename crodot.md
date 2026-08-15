@@ -17,4 +17,10 @@ The user should bring 2 different sets of settings. First, a general config that
 
 The project is written in **rust**, making heavy use of the **ratatui** library.
 
-Please note that until now all code was written by a rust amateur, which will show in the quality and consistency of the code.
+## Question response
+
+The question flow is a simple prompt by the user, which is sent to the LLM. The LLM response is shown. Any coding blocks are selectable and can be copied to clipboard so the user can add them manually to their project.
+
+## Coding response
+
+The coding response is supposed to be somewhat automatic. The response of the LLM is structured file contents that the user can simply apply (or reject).
