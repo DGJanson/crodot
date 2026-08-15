@@ -89,6 +89,12 @@ impl TextArea {
                     self.clamp_cursor();
                 }
             }
+            (KeyCode::Home, _) => {
+                self.cursor_col = 0;
+            }
+            (KeyCode::End, _) => {
+                self.cursor_col = self.lines[self.cursor_row].chars().count();
+            }
             (KeyCode::Backspace, _) => {
                 if self.cursor_col > 0 {
                     // Remove character before cursor
