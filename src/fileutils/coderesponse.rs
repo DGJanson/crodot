@@ -110,6 +110,9 @@ fn coding_response_handler(response: &str) -> Result<CodingResponse, CodingRespo
             } else if line.trim() == "- Files" {
                 finished_header = true;
                 continue;
+            } else if line.trim().is_empty() {
+                // bit of an edge case. But ignore empty lines
+                continue;
             } else {
                 return Err(CodingResponseError::InvalidLine(format!(
                     "Unexpected header line in response: {line}",
@@ -203,7 +206,7 @@ fn coding_response_handler(response: &str) -> Result<CodingResponse, CodingRespo
     // Create the coding response and set it
     let cr = CodingResponse {
         message: description,
-        error: error,
+        error,
         code: file_changes,
     };
     Ok(cr)
@@ -273,7 +276,7 @@ pub fn write_code_response_file(state: &mut AppState, override_filepath: &str) -
     }
 }
 
-pub fn normalize_filepath(source_dir: &PathBuf, filename: &str) -> PathBuf {
+pub fn normalize_filepath(source_dir: &Path, filename: &str) -> PathBuf {
     // check if filename starts with seperator
     let rel_filename = filename.trim_start_matches("/").trim_start_matches("\\");
 
@@ -363,14 +366,15 @@ def add(x, y):
 
 "#;
         let cr_res = coding_response_handler(cr_string);
+        assert!(cr_res.is_ok());
         match cr_res {
             Ok(cr) => {
-                assert!(true);
                 assert!(cr.error.is_none());
+                assert!(cr.code.len() == 2);
             }
             Err(e) => {
                 print!("{e}");
-                assert!(false);
+                panic!();
             }
         }
     }

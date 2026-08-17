@@ -22,12 +22,10 @@ When you provide code changes, do NOT use JSON. Instead, use the following custo
 <optional error message, or leave this line empty. If error, the rest of the response is optional>
 - Message
 <A short description of all changes>
-
 - Files
 -!- <filepath relative to source dir>
 -!- <mode: either "new" or "edit">
 -!- <short description of changes in this file>
--!-
 <Complete file contents go here. Make sure not to use the separator "-!- " inside your code.>
 -!-
 (Repeat the block above for each file if there are multiple files)
