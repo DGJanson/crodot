@@ -23,7 +23,7 @@ pub fn render_menu_shortcut_option(
         Rect {
             x: container.x + 2,
             y: container.y + 2 + index,
-            width: 25,
+            width: container.width - 4,
             height: 1,
         },
     );
