@@ -124,11 +124,15 @@ fn create_complete_prompt(
             }
 
             // Create dir structure
-            result = format!(
-                "{}\n\nThe dir structure of the project is:\n\n{}\n\n",
-                result,
-                create_dir_structure(&p.directory)
-            );
+            // based on prompt dirs.
+            for prompt_dir in p.prompt_dirs.iter() {
+                result = format!(
+                    "{}\n\nThe dir structure of the {} is:\n\n{}\n\n",
+                    result,
+                    prompt_dir.description,
+                    create_dir_structure(&prompt_dir.path)
+                );
+            }
 
             // Read active files
             for file in p.file_active_list.iter() {

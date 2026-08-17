@@ -10,32 +10,47 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
-use crate::project::save_project_file;
+use crate::project::{PromptDir, save_project_file};
 use crate::tui::layoututils::get_center_rect;
 use crate::tui::utils::{render_main_border, render_menu_shortcut_option};
 use crate::{AppState, Screen};
 
 use super::layoututils::{get_inner_rect, get_inner_rect_pad};
 
+// extend your MenuMode:
 #[derive(PartialEq)]
 enum MenuMode {
-    SelectMode,     // The default mode
-    SelectFunction, // The user selects a function from the menu
-    ProjectMode,    // The user wants to interact with the project
-    EditMode,       // The user is updating a setting
+    SelectMode,
+    SelectFunction,
+    ProjectMode,
+    EditMode,
+    ManagePromptDirs,   // new: list/add/remove
+    EditPromptDirField, // new: typing description or path
 }
 
+// extend your MenuState:
 pub struct MenuState {
     mode: MenuMode,
-    input: Option<String>, // Which setting is being edited
-    input_value: String,
+    input: Option<String>, // existing: which field is being edited
+    input_value: String,   // existing: typed input
+    // new fields for prompt-dirs flow
+    prompt_dir_action: Option<PromptDirAction>,
+    prompt_dir_temp: Option<PathBuf>, // temp field to store description
+}
+
+enum PromptDirAction {
+    AddDesc, // we are entering the description
+    AddPath, // we are entering the path
+    Delete,  // we are about to delete index
 }
 
 pub fn create_menu_state() -> MenuState {
     MenuState {
         mode: MenuMode::SelectMode,
         input: None,
-        input_value: String::default(),
+        input_value: String::new(),
+        prompt_dir_action: None,
+        prompt_dir_temp: None,
     }
 }
 
@@ -61,16 +76,59 @@ pub fn draw_menu(frame: &mut Frame, state: &mut AppState, screen_state: &mut Men
         frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner_rect);
     };
 
-    // There are some possible popups
+    // ProjectMode popup
     if screen_state.mode == MenuMode::ProjectMode {
-        let centered_rect = get_center_rect(frame.area(), 34, 10);
-        frame.render_widget(Clear, centered_rect);
-        frame.render_widget(Block::bordered(), centered_rect);
-        render_menu_shortcut_option(frame, centered_rect, "n", "set name", 0);
-        render_menu_shortcut_option(frame, centered_rect, "l", "set file location", 1);
-        render_menu_shortcut_option(frame, centered_rect, "d", "set src dir", 2);
-        render_menu_shortcut_option(frame, centered_rect, "s", "save project", 4);
-    } else if screen_state.mode == MenuMode::SelectFunction {
+        let centered = get_center_rect(frame.area(), 40, 12);
+        frame.render_widget(Clear, centered);
+        frame.render_widget(Block::bordered(), centered);
+        render_menu_shortcut_option(frame, centered, "n", "set name", 0);
+        render_menu_shortcut_option(frame, centered, "l", "set proj file location", 1);
+        render_menu_shortcut_option(frame, centered, "s", "save project", 3);
+        render_menu_shortcut_option(frame, centered, "r", "set project root", 5);
+        render_menu_shortcut_option(frame, centered, "d", "manage prompt_dirs", 6);
+        return;
+    }
+
+    // ManagePromptDirs: list existing, offer Add/Delete
+    if screen_state.mode == MenuMode::ManagePromptDirs {
+        let centered = get_center_rect(frame.area(), 70, 30);
+        frame.render_widget(Clear, centered);
+        frame.render_widget(Block::bordered(), centered);
+
+        let mut lines = vec![Line::from("Prompt Dirs:"), Line::from("")];
+        if let Some(proj) = &state.current_project {
+            for (i, pd) in proj.prompt_dirs.iter().enumerate() {
+                lines.push(Line::from(format!("{}.", i + 1)));
+                lines.push(Line::from(pd.path.to_string_lossy()));
+                lines.push(Line::from(pd.description.clone()));
+            }
+        }
+        frame.render_widget(Paragraph::new(lines), get_inner_rect(centered, 2, 1, 2, 4));
+        let keys = " a   -> add prompt dir\n r   -> remove by index".to_string();
+
+        frame.render_widget(Paragraph::new(keys), get_inner_rect(centered, 2, 1, 27, 1));
+        return;
+    }
+
+    // EditPromptDirField: typing either desc or path
+    if screen_state.mode == MenuMode::EditPromptDirField {
+        let centered = get_center_rect(frame.area(), 60, 6);
+        frame.render_widget(Clear, centered);
+        frame.render_widget(Block::bordered(), centered);
+
+        let prompt = match screen_state.prompt_dir_action {
+            Some(PromptDirAction::AddDesc) => "Enter description:",
+            Some(PromptDirAction::AddPath) => "Enter path:",
+            _ => "",
+        };
+        frame.render_widget(
+            Paragraph::new(format!("{}\n{}|", prompt, screen_state.input_value)),
+            get_inner_rect(centered, 2, 1, 2, 2),
+        );
+        return;
+    }
+
+    if screen_state.mode == MenuMode::SelectFunction {
         // Show the possible functions of this screen
         let centered_rect = get_center_rect(frame.area(), 34, 10);
         frame.render_widget(Clear, centered_rect);
@@ -79,7 +137,9 @@ pub fn draw_menu(frame: &mut Frame, state: &mut AppState, screen_state: &mut Men
         render_menu_shortcut_option(frame, centered_rect, "r", "llm response", 1);
         render_menu_shortcut_option(frame, centered_rect, "f", "file manager", 2);
         render_menu_shortcut_option(frame, centered_rect, "q", "quit", 4);
-    } else if screen_state.mode == MenuMode::EditMode {
+    }
+
+    if screen_state.mode == MenuMode::EditMode {
         let centered_rect = get_center_rect(frame.area(), 60, 5);
         frame.render_widget(Clear, centered_rect);
         frame.render_widget(Block::bordered(), centered_rect);
@@ -95,7 +155,7 @@ pub fn draw_menu(frame: &mut Frame, state: &mut AppState, screen_state: &mut Men
         frame.render_widget(
             // Paste a bar at the end
             Paragraph::new(format!("{}⎸", screen_state.input_value.as_str())),
-            get_inner_rect(centered_rect, 1, 1, 2, 2),
+            get_inner_rect(centered_rect, 2, 1, 2, 2),
         );
     }
 }
@@ -151,9 +211,9 @@ pub fn handle_event_menu(key: KeyEvent, state: &mut AppState, screen_state: &mut
                     None => String::default(),
                 }
             }
-            KeyCode::Char('d') => {
+            KeyCode::Char('r') => {
                 screen_state.mode = MenuMode::EditMode;
-                screen_state.input = Some(String::from("src dir"));
+                screen_state.input = Some(String::from("root dir"));
                 screen_state.input_value = match state.current_project.as_ref() {
                     Some(project) => project
                         .directory
@@ -173,6 +233,11 @@ pub fn handle_event_menu(key: KeyEvent, state: &mut AppState, screen_state: &mut
                         state.error_msg = Some(String::from("Could not save project"));
                     }
                 }
+            }
+
+            KeyCode::Char('d') => {
+                // go into managing prompt_dirs
+                screen_state.mode = MenuMode::ManagePromptDirs;
             }
             _ => {}
         },
@@ -194,6 +259,102 @@ pub fn handle_event_menu(key: KeyEvent, state: &mut AppState, screen_state: &mut
                 screen_state.mode = MenuMode::SelectMode;
             }
             KeyCode::Char(c) => screen_state.input_value.push(c),
+            _ => {}
+        },
+
+        MenuMode::EditPromptDirField => {
+            match key.code {
+                KeyCode::Char(c) => {
+                    screen_state.input_value.push(c);
+                }
+                KeyCode::Backspace => {
+                    let _ = screen_state.input_value.pop();
+                }
+                KeyCode::Enter => {
+                    match screen_state.prompt_dir_action.take() {
+                        Some(PromptDirAction::AddPath) => {
+                            // Temp store path
+                            // Convert to pathbuf first
+                            let pb = PathBuf::from(&screen_state.input_value);
+                            if !pb.is_dir() {
+                                state.error_msg = Some(format!(
+                                    "{} is not an eixsting dir",
+                                    screen_state.input_value
+                                ));
+                                return;
+                            }
+                            screen_state.prompt_dir_temp = Some(pb);
+                            screen_state.input_value = String::new();
+                            screen_state.mode = MenuMode::EditPromptDirField;
+                            screen_state.prompt_dir_action = Some(PromptDirAction::AddDesc);
+                        }
+                        Some(PromptDirAction::AddDesc) => {
+                            // We can use the input value as desc
+                            // The dir is stored in state
+                            // but we need to check if optional
+                            if let Some(path) = &screen_state.prompt_dir_temp {
+                                state.current_project.as_mut().unwrap().prompt_dirs.push(
+                                    PromptDir {
+                                        description: screen_state.input_value.clone(),
+                                        path: path.clone(),
+                                    },
+                                );
+                            } else {
+                                state.error_msg = Some(String::from(
+                                    "Could not store prompt dir. This should be impossible...",
+                                ));
+                            }
+
+                            // Reset everything
+                            screen_state.input_value = String::new();
+                            screen_state.prompt_dir_temp = None;
+                            screen_state.mode = MenuMode::ManagePromptDirs;
+                        }
+                        Some(PromptDirAction::Delete) => {
+                            if let Ok(idx) = screen_state.input_value.parse::<usize>() {
+                                if let Some(proj) = state.current_project.as_mut() {
+                                    if idx > 0 && idx <= proj.prompt_dirs.len() {
+                                        proj.prompt_dirs.remove(idx - 1);
+                                    }
+                                }
+                            }
+                            screen_state.mode = MenuMode::ManagePromptDirs;
+                        }
+                        None => {}
+                    }
+                    screen_state.input_value.clear();
+                }
+                KeyCode::Esc => {
+                    // cancel any prompt_dir action
+                    screen_state.prompt_dir_action = None;
+                    screen_state.input_value.clear();
+                    screen_state.prompt_dir_temp = None;
+                    screen_state.mode = MenuMode::ManagePromptDirs;
+                }
+                _ => {}
+            }
+        }
+        MenuMode::ManagePromptDirs => match key.code {
+            KeyCode::Char('a') => {
+                // begin “add” flow: first ask for path
+                // init at root dir
+                screen_state.input_value.clear();
+                if let Some(project) = &state.current_project {
+                    screen_state.input_value = project.directory.to_string_lossy().to_string();
+                }
+                screen_state.prompt_dir_action = Some(PromptDirAction::AddPath);
+                screen_state.mode = MenuMode::EditPromptDirField;
+            }
+            KeyCode::Char('r') => {
+                // remove: prompt user to enter index next
+                screen_state.prompt_dir_action = Some(PromptDirAction::Delete);
+                screen_state.input_value.clear();
+                screen_state.mode = MenuMode::EditPromptDirField;
+            }
+            KeyCode::Esc => {
+                screen_state.mode = MenuMode::ProjectMode;
+                screen_state.prompt_dir_action = None;
+            }
             _ => {}
         },
     }
@@ -218,7 +379,7 @@ fn save_edited_value(state: &mut AppState, screen_state: &mut MenuState) {
                     project.project_file = PathBuf::from(screen_state.input_value.clone());
                 }
             }
-            "src dir" => {
+            "root dir" => {
                 if !screen_state.input_value.is_empty() {
                     project.directory = PathBuf::from(screen_state.input_value.clone());
                 }
