@@ -4,6 +4,7 @@ use clipboard_rs::{Clipboard, ClipboardContext};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
+    layout::Rect,
     style::{Color, Style},
     text::Line,
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
@@ -32,6 +33,8 @@ pub struct LlmResponseScreenState {
     screen_mode: LlmResponseMode,
     result_scroll: u16,
     handle_file: String, // Store as string, cast later
+    // show raw response for coding response (debug)
+    show_raw_code_output: bool,
     // Some vars to select code
     pub code_blocks: Vec<(usize, usize)>,
     pub selected_block: usize,
@@ -45,6 +48,7 @@ pub fn create_llm_response_state() -> LlmResponseScreenState {
         screen_mode: LlmResponseMode::Main,
         result_scroll: 0,
         handle_file: String::from("0"),
+        show_raw_code_output: false,
         code_blocks: Vec::new(),
         selected_block: 0,
         selected: false,
@@ -119,56 +123,79 @@ pub fn draw_llm_response_screen(
             // Divide the screen in two parts:
             // - message
             // - changed files
-            if let Some(code_response) = state.llm_response_code_response.as_ref() {
-                let (message_rect, files_rect) = horizontal_left_divide_by_fraction(right_rect, 3);
-                if code_response.error.is_some() {
+            if !screen_state.show_raw_code_output {
+                if let Some(code_response) = state.llm_response_code_response.as_ref() {
+                    let (message_rect, files_rect) =
+                        horizontal_left_divide_by_fraction(right_rect, 3);
+                    if code_response.error.is_some() {
+                        frame.render_widget(
+                            Paragraph::new(code_response.error.as_deref().unwrap_or_default())
+                                .style(Style::new().red())
+                                .wrap(Wrap { trim: true }),
+                            get_inner_rect_pad(message_rect, 2, 1),
+                        );
+                    } else {
+                        frame.render_widget(
+                            Paragraph::new(code_response.message.as_str())
+                                .wrap(Wrap { trim: true })
+                                .scroll((screen_state.result_scroll, 0)),
+                            get_inner_rect_pad(message_rect, 2, 1),
+                        );
+                    }
+
+                    // Render the changed files.
+                    // On this screen, we just render the list
+                    // Create a long string to draw the file changes
+                    let mut file_list = String::new();
+                    let max_desc_len = usize::from(files_rect.width) - 2;
+                    for (index, file) in code_response.code.iter().enumerate() {
+                        let num = index + 1;
+                        let filename = &file.filename;
+                        // Calc max desc len
+                        let desc = if file.description.len() > max_desc_len {
+                            let mut end_idx = max_desc_len;
+                            // We need to take into account that we substring
+                            // into a utf-8 char, which is not allowed
+                            while end_idx > 0 && !file.description.is_char_boundary(end_idx) {
+                                end_idx -= 1;
+                            }
+                            &file.description[0..end_idx]
+                        } else {
+                            &file.description
+                        };
+
+                        file_list.push_str(&format!("{num}.\n{filename}\n{desc}\n\n",));
+                    }
+
                     frame.render_widget(
-                        Paragraph::new(code_response.error.as_deref().unwrap_or_default())
-                            .style(Style::new().red())
-                            .wrap(Wrap { trim: true }),
-                        get_inner_rect_pad(message_rect, 2, 1),
+                        Paragraph::new(file_list.as_str()).scroll((screen_state.result_scroll, 0)),
+                        get_inner_rect_pad(files_rect, 1, 1),
                     );
                 } else {
+                    // Something wrong with coding response,
+                    // Print plain response
                     frame.render_widget(
-                        Paragraph::new(code_response.message.as_str())
-                            .wrap(Wrap { trim: true })
-                            .scroll((screen_state.result_scroll, 0)),
-                        get_inner_rect_pad(message_rect, 2, 1),
+                        Paragraph::new("Did not receive a proper coding response. For debugging purposes the prompt will be shown below").wrap(Wrap {trim: true}),
+                        Rect {
+                            x: right_rect.x + 2,
+                            y: right_rect.y + 2,
+                            width: right_rect.width - 4,
+                            height: 4
+                        }
                     );
                 }
-
-                // Render the changed files.
-                // On this screen, we just render the list
-                // Create a long string to draw the file changes
-                let mut file_list = String::new();
-                let max_desc_len = usize::from(files_rect.width) - 2;
-                for (index, file) in code_response.code.iter().enumerate() {
-                    let num = index + 1;
-                    let filename = &file.filename;
-                    // Calc max desc len
-                    let desc = if file.description.len() > max_desc_len {
-                        let mut end_idx = max_desc_len;
-                        // We need to take into account that we substring
-                        // into a utf-8 char, which is not allowed
-                        while end_idx > 0 && !file.description.is_char_boundary(end_idx) {
-                            end_idx -= 1;
-                        }
-                        &file.description[0..end_idx]
-                    } else {
-                        &file.description
-                    };
-
-                    file_list.push_str(&format!("{num}.\n{filename}\n{desc}\n\n",));
-                }
-
-                frame.render_widget(
-                    Paragraph::new(file_list.as_str()).scroll((screen_state.result_scroll, 0)),
-                    get_inner_rect_pad(files_rect, 1, 1),
-                );
             } else {
+                // show raw coding response
                 frame.render_widget(
-                    Paragraph::new("Did not receive a proper coding response."),
-                    get_inner_rect_pad(right_rect, 2, 1),
+                    Paragraph::new(state.llm_response.as_str())
+                        .wrap(Wrap { trim: false })
+                        .scroll((screen_state.result_scroll, 0)),
+                    Rect {
+                        x: right_rect.x + 2,
+                        y: right_rect.y + 2,
+                        width: right_rect.width - 4,
+                        height: right_rect.height - 2,
+                    },
                 );
             }
         }
@@ -246,7 +273,6 @@ pub fn handle_event_llm_response_screen(
             }
 
             // For now we only handle [ ] presses when not in coding response
-            // TODO, implement [ ] selection for coding response
             KeyCode::Char('[') => {
                 if state.current_prompt_mode != LlmMode::Coding && screen_state.selected_block >= 1
                 {
@@ -270,6 +296,9 @@ pub fn handle_event_llm_response_screen(
                     yank_to_clipboard(state, screen_state);
                 }
             }
+            KeyCode::Char('r') => {
+                screen_state.show_raw_code_output = !screen_state.show_raw_code_output;
+            }
             _ => {}
         },
         LlmResponseMode::HandlePrompt => match key.code {
@@ -278,6 +307,7 @@ pub fn handle_event_llm_response_screen(
                 screen_state.result_scroll = 0;
                 screen_state.handle_file = String::from("0");
                 screen_state.screen_mode = LlmResponseMode::Main;
+                screen_state.show_raw_code_output = false;
                 state.wipe_llm_input_prompt = true;
                 state.screen = Screen::Llm; // Go to other screen
             }
@@ -288,6 +318,7 @@ pub fn handle_event_llm_response_screen(
                 screen_state.result_scroll = 0;
                 screen_state.handle_file = String::from("0");
                 screen_state.screen_mode = LlmResponseMode::Main;
+                screen_state.show_raw_code_output = false;
                 state.wipe_llm_input_prompt = true; // Cross comm to other screen
                 state.screen = Screen::Llm; // Go to other screen
             }

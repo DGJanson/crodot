@@ -49,8 +49,8 @@ enum CodingResponseError {
 /// (see the crodot system prompt in this repo)
 /// Will use the error of the AppState
 /// in case of any error
-pub fn parse_coding_response(state: &mut AppState, response: String) {
-    let clean_response = sanitize_llm_response(&response);
+pub fn parse_coding_response(state: &mut AppState, response: &str) {
+    let clean_response = sanitize_llm_response(response);
     match coding_response_handler(clean_response) {
         Ok(cr) => state.llm_response_code_response = Some(cr),
         Err(e) => {
@@ -234,41 +234,54 @@ fn sanitize_llm_response(input: &str) -> &str {
 /// Based on the state vars
 /// Return true if write successful
 pub fn write_code_response_file(state: &mut AppState, override_filepath: &str) -> bool {
-    // get rid of edge cases
+    // Guard: must have a current project and a parsed code response
     if state.current_project.is_none() {
+        state.error_msg = Some("No active project".into());
         return false;
     }
     if state.llm_response_code_response.is_none() {
+        state.error_msg = Some("No code response from LLM".into());
         return false;
     }
 
-    // First get the required info
-    // We unwrap a lot, but check everything beforehand
-    //   crashes because of wraps should not be possible
+    // Unwrap safely because of the guards above
     let project = state.current_project.as_ref().unwrap();
     let code_response = state.llm_response_code_response.as_ref().unwrap();
     let selected_index = state.llm_response_code_selected;
     if selected_index >= code_response.code.len() {
-        state.error_msg = Some(String::from("Invalid code response selected"));
+        state.error_msg = Some("Invalid code response selected".into());
         return false;
     }
-    let file_change = code_response.code.get(selected_index).unwrap();
+    let file_change = &code_response.code[selected_index];
 
-    // We must check several things before we can surely write the file
+    // Determine final output path
     let filepath = if override_filepath.is_empty() {
         normalize_filepath(&project.directory, &file_change.filename)
     } else {
         PathBuf::from(override_filepath)
     };
 
-    let write_result = std::fs::write(&filepath, &file_change.file_contents);
+    // Ensure the target directory exists (create if needed)
+    if let Some(parent_dir) = filepath.parent() {
+        if !parent_dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(parent_dir) {
+                state.error_msg = Some(format!(
+                    "Error creating directory {}: {}",
+                    parent_dir.display(),
+                    e
+                ));
+                return false;
+            }
+        }
+    }
 
-    match write_result {
+    // Finally, write the file contents
+    match std::fs::write(&filepath, &file_change.file_contents) {
         Ok(_) => true,
         Err(e) => {
             state.error_msg = Some(format!(
-                "Error whilst writing file: {}. Message: {:?}",
-                &filepath.display(),
+                "Error whilst writing file {}: {:?}",
+                filepath.display(),
                 e
             ));
             false

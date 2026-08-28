@@ -115,21 +115,17 @@ pub fn draw_file_handler_screen(
 
     // If edited file exists, check if it was in context. Give warning if not.
     let file_path = normalize_filepath(&project.directory, &file_changes.filename);
-    if file_changes.mode == ChangeMode::Edit {
-        if !project.file_active_list.contains(&file_path) {
-            lines.push(Line::from(Span::styled(
-                LEFT_PANEL_FILE_NOT_ADDED_WARNING,
-                Style::default().red(),
-            )));
-        }
+    if file_changes.mode == ChangeMode::Edit && !project.file_active_list.contains(&file_path) {
+        lines.push(Line::from(Span::styled(
+            LEFT_PANEL_FILE_NOT_ADDED_WARNING,
+            Style::default().red(),
+        )));
     };
-    if file_changes.mode == ChangeMode::New {
-        if file_path.is_file() {
-            lines.push(Line::from(Span::styled(
-                LEFT_PANEL_FILE_ALREADY_EXISTS_WARNING,
-                Style::default().red(),
-            )));
-        }
+    if file_changes.mode == ChangeMode::New && file_path.is_file() {
+        lines.push(Line::from(Span::styled(
+            LEFT_PANEL_FILE_ALREADY_EXISTS_WARNING,
+            Style::default().red(),
+        )));
     };
 
     frame.render_widget(
@@ -161,7 +157,7 @@ pub fn draw_file_handler_screen(
 
     if screen_state.mode == FileHandlerMode::Success {
         let center_rect = get_center_rect(frame.area(), 30, 5);
-        frame.render_widget(Clear::default(), center_rect);
+        frame.render_widget(Clear, center_rect);
         frame.render_widget(Block::bordered(), center_rect);
         frame.render_widget(
             Paragraph::new("File written").green(),
@@ -171,7 +167,7 @@ pub fn draw_file_handler_screen(
 
     if screen_state.mode == FileHandlerMode::Handle {
         let center_rect = get_center_rect(frame.area(), 30, 7);
-        frame.render_widget(Clear::default(), center_rect);
+        frame.render_widget(Clear, center_rect);
         frame.render_widget(Block::bordered(), center_rect);
         render_menu_shortcut_option(frame, center_rect, "w", "Write file", 0);
         render_menu_shortcut_option(frame, center_rect, "b", "Back to response", 3);
@@ -179,7 +175,7 @@ pub fn draw_file_handler_screen(
 
     if screen_state.mode == FileHandlerMode::FileLoc {
         let center_rect = get_center_rect(frame.area(), frame.area().width - 4, 3);
-        frame.render_widget(Clear::default(), center_rect);
+        frame.render_widget(Clear, center_rect);
         frame.render_widget(Block::bordered(), center_rect);
         frame.render_widget(
             Paragraph::new(screen_state.override_filename.as_str()),
@@ -262,15 +258,12 @@ pub fn handle_event_filehandler(
             }
             _ => {}
         },
-        FileHandlerMode::Success => match key.code {
-            // Any key should take us back
-            _ => {
-                screen_state.file_scroll = 0;
-                screen_state.mode = FileHandlerMode::Main;
-                screen_state.override_filename = String::default();
-                state.screen = Screen::LlmResponse;
-            }
-        },
+        FileHandlerMode::Success => {
+            screen_state.file_scroll = 0;
+            screen_state.mode = FileHandlerMode::Main;
+            screen_state.override_filename = String::default();
+            state.screen = Screen::LlmResponse;
+        }
         FileHandlerMode::FileLoc => match key.code {
             KeyCode::Backspace => {
                 screen_state.override_filename.pop();

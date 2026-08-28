@@ -182,8 +182,10 @@ where
                 if let Ok(response) = app_state.receiver_channel.try_recv() {
                     match app_state.current_prompt_mode {
                         LlmMode::Coding => {
-                            parse_coding_response(&mut app_state, response);
+                            parse_coding_response(&mut app_state, response.as_str());
                             app_state.llm_response_state = LlmResponseState::NewResponse;
+                            // For debugging purposes, we do save the response as string as well
+                            app_state.llm_response = response;
                         }
                         _ => {
                             app_state.llm_response = response;

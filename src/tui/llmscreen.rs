@@ -1,3 +1,4 @@
+use clipboard_rs::{Clipboard, ClipboardContext};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
@@ -149,6 +150,7 @@ pub fn handle_event_llm_screen(
             KeyCode::Char('F') => state.current_prompt_mode = LlmMode::Mock,
             KeyCode::Char('i') => screen_state.screen_mode = LlmScreenMode::Prompt,
             KeyCode::Char('?') => screen_state.screen_mode = LlmScreenMode::KeyHelp,
+            KeyCode::Char('y') => yank_prompt(state, screen_state),
             _ => {}
         },
         LlmScreenMode::Function => match key.code {
@@ -214,6 +216,23 @@ fn switch_llm_mode(state: &mut AppState) {
         state.current_prompt_mode = LlmMode::Coding;
     } else {
         state.current_prompt_mode = LlmMode::Question;
+    }
+}
+
+fn yank_prompt(state: &mut AppState, screen_state: &LlmScreenState) {
+    let ctx_opt = ClipboardContext::new();
+    match ctx_opt {
+        Err(e) => {
+            state.error_msg = Some(format!("Could not init clipboard, because {e}"));
+        }
+        Ok(ctx) => {
+            // get text from text area
+            let prompt = screen_state.prompt_area.get_text();
+
+            if ctx.set_text(prompt).is_err() {
+                state.error_msg = Some("Could not yank to clipboard".to_string())
+            }
+        }
     }
 }
 
