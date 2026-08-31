@@ -203,6 +203,18 @@ fn coding_response_handler(response: &str) -> Result<CodingResponse, CodingRespo
         }
     }
     // We have seen all lines
+    // We may have an unfinished code response
+    // Check if we have content left and create if so
+    if file_contents.len() > 0 {
+        let fc = FileChange {
+            filename: cur_filename,
+            mode: cur_filemode,
+            description: cur_file_desc,
+            file_contents: file_contents.join("\n"),
+        };
+        file_changes.push(fc);
+        // No need to reset
+    }
     // Create the coding response and set it
     let cr = CodingResponse {
         message: description,
@@ -376,6 +388,55 @@ Module with some add functions
 def add(x, y):
     return x + y
 -!-
+-!- src/docs/add.md
+-!- new
+-!- docs for add function
+# Add
+
+Add two values
+-!-
+
+"#;
+        let cr_res = coding_response_handler(cr_string);
+        assert!(cr_res.is_ok());
+        match cr_res {
+            Ok(cr) => {
+                assert!(cr.error.is_none());
+                assert!(cr.code.len() == 3);
+            }
+            Err(e) => {
+                print!("{e}");
+                panic!();
+            }
+        }
+        let cr_string = r#"- Response
+- Error
+
+- Message
+I have edited the main file, it now call the add function new file add.py.
+- Files
+-!- src/module/main.py
+-!- edit
+-!- Added add function call to main function
+"""
+Main entry point of the program  
+"""
+from .add import add
+
+def main():
+    print("Hello World")
+    # call add function here
+    add(2, 3)
+-!-
+-!- src/module/add.py
+-!- new
+-!- Create add function
+"""
+Module with some add functions
+"""
+
+def add(x, y):
+    return x + y
 
 "#;
         let cr_res = coding_response_handler(cr_string);

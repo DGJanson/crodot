@@ -1,0 +1,12 @@
+{
+  "provider": "azureopenai",
+  "env_var_key": "openai_key",
+  "base_url": "https://deployment.openai-abcsc-prd.azure.com",
+  "model": "o4-mini",
+  "system_prompt_file": "c:/users/djanson/workspace/crodot/crodot_prompt.md",
+  "api_version": "2025-01-01-preview",
+  "deployment_id": "o4-mini",
+  "projects": [
+    "c:/Users/DJanson/workspace/crodot/.crodot.json"
+  ]
+}
