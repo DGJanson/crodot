@@ -24,7 +24,7 @@ The second mode is **coding** mode. You will be asked to write code for the user
 -!- <filepath relative to source dir>
 -!- <mode: either "new" or "edit">
 -!- <short description of changes in this file>
-<Complete file contents go here. Make sure not to use the separator "-!- " inside your code.>
+<Complete file contents go here. Make sure not to use the separator "-!- " inside your code. And do NOT enclose the file contents in markdown ```>
 -!-
 (Repeat the block above for each file if there are multiple files)
 ```
