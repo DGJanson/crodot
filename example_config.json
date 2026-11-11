@@ -6,7 +6,9 @@
   "system_prompt_file": "c:/users/djanson/workspace/crodot/crodot_prompt.md",
   "api_version": "2025-01-01-preview",
   "deployment_id": "o4-mini",
+  "reasoning": true,
+  "reasoning_effort": "medium",
   "projects": [
     "c:/Users/DJanson/workspace/crodot/.crodot.json"
-  ]
+  ]  
 }

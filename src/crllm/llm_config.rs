@@ -7,7 +7,32 @@ use serde_json;
 use llm::{
     LLMProvider,
     builder::{LLMBackend, LLMBuilder},
+    chat::ReasoningEffort,
 };
+
+fn default_reasoning() -> bool {
+    true
+}
+
+fn default_reasoning_effort() -> ReasoningEffort {
+    ReasoningEffort::Medium
+}
+
+fn deserialize_reasoning_effort<'de, D>(deserializer: D) -> Result<ReasoningEffort, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
+    match opt.as_deref().map(|s| s.to_lowercase()) {
+        Some(s) if s == "low" => Ok(ReasoningEffort::Low),
+        Some(s) if s == "medium" => Ok(ReasoningEffort::Medium),
+        Some(s) if s == "high" => Ok(ReasoningEffort::High),
+        None => Ok(ReasoningEffort::Medium),
+        Some(s) => Err(serde::de::Error::custom(format!(
+            "unknown reasoning effort: '{s}', expected 'low', 'medium', or 'high'"
+        ))),
+    }
+}
 
 #[derive(Deserialize)]
 pub struct CrodotConfig {
@@ -18,6 +43,14 @@ pub struct CrodotConfig {
     system_prompt_file: String, // Location of the system prompt
     api_version: Option<String>,
     deployment_id: Option<String>,
+    #[serde(default = "default_reasoning")]
+    pub reasoning: bool,
+    #[serde(
+        default = "default_reasoning_effort",
+        deserialize_with = "deserialize_reasoning_effort",
+        alias = "reasoningEffort"
+    )]
+    pub reasoning_effort: ReasoningEffort,
     pub projects: Option<Vec<String>>, // possible list of projects
 }
 
@@ -71,6 +104,9 @@ pub fn generate_llm_provider(
         llm_builder = llm_builder.deployment_id(deployment_id);
     }
 
+    llm_builder = llm_builder.reasoning(llm_config.reasoning);
+    llm_builder = llm_builder.reasoning_effort(llm_config.reasoning_effort);
+
     match llm_config.provider {
         LlmProvider::AzureOpenAi => {
             llm_builder = llm_builder.backend(LLMBackend::AzureOpenAI);
@@ -122,6 +158,58 @@ mod tests {
 
         let llm_config = read_llm_config_string(&test_llm_config_correct).unwrap();
         assert!(matches!(llm_config.provider, LlmProvider::AzureOpenAi));
+        assert!(llm_config.reasoning);
+        assert!(matches!(
+            llm_config.reasoning_effort,
+            ReasoningEffort::Medium
+        ));
+
+        tmpfile.close().unwrap();
+    }
+
+    #[test]
+    fn test_read_config_with_reasoning_effort() {
+        let tmpfile = NamedTempFile::new().unwrap();
+        let tmpfile_path = tmpfile.path().to_str().unwrap().replace("\\", "/");
+
+        let test_llm_config_high = format!(
+            r#"
+            {{
+                "provider": "azureopenai",
+                "env_var_key": "openai_key",
+                "model": "gpt-4",
+                "system_prompt_file": "{tmpfile_path}",
+                "reasoningEffort": "high"
+            }}
+            "#
+        );
+
+        let llm_config = read_llm_config_string(&test_llm_config_high).unwrap();
+        assert!(matches!(llm_config.reasoning_effort, ReasoningEffort::High));
+        assert!(llm_config.reasoning);
+
+        tmpfile.close().unwrap();
+    }
+
+    #[test]
+    fn test_read_config_with_reasoning_flag() {
+        let tmpfile = NamedTempFile::new().unwrap();
+        let tmpfile_path = tmpfile.path().to_str().unwrap().replace("\\", "/");
+
+        let test_llm_config_disabled = format!(
+            r#"
+            {{
+                "provider": "azureopenai",
+                "env_var_key": "openai_key",
+                "model": "gpt-4",
+                "system_prompt_file": "{tmpfile_path}",
+                "reasoning": false
+            }}
+            "#
+        );
+
+        let llm_config = read_llm_config_string(&test_llm_config_disabled).unwrap();
+        assert!(!llm_config.reasoning);
 
         tmpfile.close().unwrap();
     }
