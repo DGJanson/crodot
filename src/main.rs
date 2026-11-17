@@ -140,7 +140,9 @@ fn generate_app_state(
 fn main() {
     // use a very simple console logger for bootstrapping
     // this will taken over by the tui after it started
-    colog::init();
+    let mut log_builder = colog::default_builder();
+    log_builder.filter_module("llm", log::LevelFilter::Off);
+    log_builder.init();
 
     log::info!("Started application");
 
