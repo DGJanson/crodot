@@ -293,7 +293,13 @@ pub fn handle_event_llm_response_screen(
             }
             KeyCode::Char('y') => {
                 if state.current_prompt_mode != LlmMode::Coding {
-                    yank_to_clipboard(state, screen_state);
+                    yank_to_clipboard(state, screen_state, true);
+                }
+            }
+            KeyCode::Char('Y') => {
+                // Copy the whole LLM result to clipboard
+                if state.current_prompt_mode != LlmMode::Coding {
+                    yank_to_clipboard(state, screen_state, false);
                 }
             }
             KeyCode::Char('r') => {
@@ -396,7 +402,15 @@ fn get_higlighted_spans<'a>(
     lines
 }
 
-fn yank_to_clipboard(state: &mut AppState, screen_state: &LlmResponseScreenState) {
+/// This function adds text to the clipboard
+/// The yank_block parameter determines whether
+///   we select a block (true)
+///   or the entire llm_result (false)
+fn yank_to_clipboard(
+    state: &mut AppState,
+    screen_state: &LlmResponseScreenState,
+    yank_block: bool,
+) {
     // Note we need to state to generate errors
     // First check if we have selected anything
     if screen_state.selected {
@@ -406,17 +420,25 @@ fn yank_to_clipboard(state: &mut AppState, screen_state: &LlmResponseScreenState
                 state.error_msg = Some(format!("Could not init clipboard, because {e}"));
             }
             Ok(ctx) => {
-                // Find the selected text
-                let Some(selected_block) =
-                    screen_state.code_blocks.get(screen_state.selected_block)
-                else {
-                    return;
-                };
+                if yank_block {
+                    // Find the selected text
+                    let Some(selected_block) =
+                        screen_state.code_blocks.get(screen_state.selected_block)
+                    else {
+                        return;
+                    };
 
-                let response = &state.llm_response;
-                let selected_text = &response[selected_block.0..selected_block.1];
-                if ctx.set_text(String::from(selected_text)).is_err() {
-                    state.error_msg = Some("Could not yank to clipboard".to_string())
+                    let response = &state.llm_response;
+                    let selected_text = &response[selected_block.0..selected_block.1];
+                    if ctx.set_text(String::from(selected_text)).is_err() {
+                        state.error_msg = Some("Could not yank to clipboard".to_string())
+                    }
+                } else {
+                    // NOT yank_block
+                    // Simply get the whole LLM_Response
+                    if ctx.set_text(state.llm_response.clone()).is_err() {
+                        state.error_msg = Some("Could not yank to clipboard".to_string())
+                    }
                 }
             }
         }
